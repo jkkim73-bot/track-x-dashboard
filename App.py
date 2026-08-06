@@ -338,7 +338,7 @@ def calculate_cross_sectional_ranks(metrics_list):
     return df
 
 # ==========================================
-# 4. Streamlit 웹 화면 UI 구현
+# 4. Streamlit 웹 화면 UI 구현 (보안 적용)
 # ==========================================
 
 st.title("📈 Track X Dashboard")
@@ -380,15 +380,12 @@ if st.button("🚀 KRX 219개 랭킹 탐색 시작", use_container_width=True):
     status_text.success(f"✅ 총 {len(df_ranked)}개 종목 랭킹 분석 완료!")
     progress_bar.empty()
     
-    # 결과 포맷팅 및 출력
-    df_display = df_ranked[['rank_percentile', 'name', 'code', 'sector', 'close_price', 'rsi9', 'donch_dist', 'vol_z']].copy()
+    # ⭐ 결과 포맷팅 및 출력 (지표 수치 완전 감춤 / 보안 강화)
+    df_display = df_ranked[['rank_percentile', 'name', 'code', 'sector', 'close_price']].copy()
     
-    df_display.columns = ['Rank Percentile', '종목명', '종목코드', '섹터', '현재가(원)', 'RSI9', 'DonchDist', 'VolZ']
+    df_display.columns = ['Rank Percentile', '종목명', '종목코드', '섹터', '현재가(원)']
     df_display['Rank Percentile'] = df_display['Rank Percentile'].apply(lambda x: f"{x:.4f}")
     df_display['현재가(원)'] = df_display['현재가(원)'].apply(lambda x: f"{x:,}")
-    df_display['RSI9'] = df_display['RSI9'].apply(lambda x: f"{x:.0f}")
-    df_display['DonchDist'] = df_display['DonchDist'].apply(lambda x: f"{x:.2f}")
-    df_display['VolZ'] = df_display['VolZ'].apply(lambda x: f"{x:.2f}")
     
     st.dataframe(
         df_display,
