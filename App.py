@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # ==========================================
-# 2. KOSPI 389 유니버스 데이터 정의 (텍스트 파싱)
+# 2. KOSPI 389 유니버스 데이터 정의 (원본)
 # ==========================================
 RAW_UNIVERSE_DATA = """
 005930|삼성전자|정보기술
@@ -424,7 +424,7 @@ def load_universe_389():
 KOSPI_389_UNIVERSE = load_universe_389()
 
 # ==========================================
-# 3. v1 데이터 수집 및 지표 연산 함수
+# 3. 원본 v1 지표 수식 및 횡단면 랭크
 # ==========================================
 
 def fetch_naver_daily_candles(stk_code, count=900):
@@ -455,7 +455,7 @@ def fetch_naver_daily_candles(stk_code, count=900):
             time.sleep(0.1 * (attempt + 1))
     return pd.DataFrame()
 
-# v1: Donchian Distance (20일)
+# Donchian Distance (20일) - 원본 수식
 def calc_donchian_dist(df, period=20):
     if len(df) < period:
         return 0.0
@@ -466,7 +466,7 @@ def calc_donchian_dist(df, period=20):
         return 0.0
     return (max_high - last_close) / max_high
 
-# v1: Wilder's RSI (9일)
+# Wilder's RSI (9일) - 원본 수식
 def calc_wilder_rsi(df, period=9):
     if len(df) <= period:
         return 50.0
@@ -489,7 +489,7 @@ def calc_wilder_rsi(df, period=9):
     rs = avg_gain / avg_loss
     return 100.0 - (100.0 / (1.0 + rs))
 
-# v1: Volume Z-Score (96일)
+# Volume Z-Score (96일) - 원본 수식
 def calc_vol_zscore(df, period=96):
     ct = min(len(df), period)
     if ct <= 5:
@@ -502,15 +502,15 @@ def calc_vol_zscore(df, period=96):
         return 0.0
     return (last_vol - m) / std
 
-# v1: 횡단면 랭크 연산 (Donchian 부호 반전 포함)
-def calculate_v1_ranks(metrics_list):
+# 횡단면 랭크 연산 (원본 수식 그대로 원복)
+def calculate_cross_sectional_ranks(metrics_list):
     if len(metrics_list) < 3:
         return pd.DataFrame()
         
     df = pd.DataFrame(metrics_list)
     
-    # Donchian은 작을수록 신고가 근접이므로 음수(-) 처리하여 오름차순 랭킹
-    df['r1'] = (-df['donch_dist']).rank(ascending=True, method='min') - 1
+    # 원본 정렬: 각 지표별 오름차순 정렬 랭크 (0부터 N-1까지)
+    df['r1'] = df['donch_dist'].rank(ascending=True, method='min') - 1
     df['r2'] = df['rsi9'].rank(ascending=True, method='min') - 1
     df['r3'] = df['vol_z'].rank(ascending=True, method='min') - 1
     
@@ -524,8 +524,8 @@ def calculate_v1_ranks(metrics_list):
 # 4. Streamlit 웹 화면 UI
 # ==========================================
 
-st.title("📈 Track X v1 Dashboard (389 Universe)")
-st.caption("KOSPI 389 유니버스")
+st.title("📈 Track X v1 Dashboard")
+st.caption("KOSPI 389 유니버스 횡단면 랭킹 스카웃 엔진 (원본 알고리즘 복원)")
 
 st.markdown("---")
 
@@ -533,7 +533,7 @@ col1, col2 = st.columns([2, 1])
 with col1:
     search_query = st.text_input("🔍 종목명 / 코드 / 섹터 검색", placeholder="예: 삼성전자, 005930, 정보기술")
 
-if st.button("🚀 KOSPI 389개 v1 랭킹 탐색 시작", use_container_width=True):
+if st.button("🚀 KOSPI 389개 랭킹 탐색 시작", use_container_width=True):
     progress_bar = st.progress(0)
     status_text = st.empty()
     
@@ -541,7 +541,7 @@ if st.button("🚀 KOSPI 389개 v1 랭킹 탐색 시작", use_container_width=Tr
     total_count = len(KOSPI_389_UNIVERSE)
     
     for idx, item in enumerate(KOSPI_389_UNIVERSE):
-        status_text.text(f"[{idx+1}/{total_count}] {item['name']} 시세 수집 및 v1 팩터 계산 중...")
+        status_text.text(f"[{idx+1}/{total_count}] {item['name']} 분석 중...")
         progress_bar.progress((idx + 1) / total_count)
         
         df_candles = fetch_naver_daily_candles(item['code'], count=900)
@@ -566,7 +566,6 @@ if st.button("🚀 KOSPI 389개 v1 랭킹 탐색 시작", use_container_width=Tr
         
     status_text.text("📊 최신 영업일 기준 동기화 및 횡단면 랭킹 연산 중...")
     
-    # 최빈값 날짜 동기화
     date_counts = {}
     for c in raw_candidates:
         d = c['date']
@@ -577,11 +576,11 @@ if st.button("🚀 KOSPI 389개 v1 랭킹 탐색 시작", use_container_width=Tr
         valid_candidates = [c for c in raw_candidates if c['date'] == target_date]
         valid_candidates.sort(key=lambda x: x['code'])
         
-        df_ranked = calculate_v1_ranks(valid_candidates)
+        df_ranked = calculate_cross_sectional_ranks(valid_candidates)
         st.session_state['v1_389_df'] = df_ranked
         st.session_state['target_date'] = target_date
         
-        status_text.success(f"✅ 총 {len(df_ranked)}개 종목 분석 완료! (기준일자: {target_date})")
+        status_text.success(f"✅ 총 {len(df_ranked)}개 종목 랭킹 분석 완료! (기준일자: {target_date})")
     else:
         status_text.error("❌ 시세 데이터를 수집하지 못했습니다.")
     progress_bar.empty()
