@@ -525,7 +525,7 @@ def calculate_v1_ranks(metrics_list):
 # ==========================================
 
 st.title("📈 Track X v1 Dashboard (389 Universe)")
-st.caption("KOSPI 389 유니버스 v1 지표(Wilder RSI9, Vol-Z 96, Donchian 20) 횡단면 랭킹 엔진")
+st.caption("KOSPI 389 유니버스")
 
 st.markdown("---")
 
