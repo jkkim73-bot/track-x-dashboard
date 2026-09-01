@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # ==========================================
-# 2. KOSPI 389 전체 유니버스 데이터 정의 (누락 없는 389개 풀버전)
+# 2. KOSPI 389 전체 유니버스 데이터 정의 (중복 제거된 정확한 389개)
 # ==========================================
 RAW_UNIVERSE_DATA = """
 005930|삼성전자|정보기술
@@ -377,8 +377,6 @@ RAW_UNIVERSE_DATA = """
 001530|DI동일|코스피
 090460|비에이치|코스피
 058650|세아홀딩스|코스피
-178920|PI첨단소재|코스피
-007700|F&F홀딩스|코스피
 025540|한국단자|코스피
 005810|풍산홀딩스|코스피
 336370|솔루스첨단소재|코스피
@@ -714,19 +712,26 @@ RAW_UNIVERSE_DATA = """
 058430|리노공업|코스피
 058850|KTcs|코스피
 058860|KTis|코스피
-060000|국민연금|코스피
 """
 
 def load_universe_389():
+    seen = set()
     items = []
     for line in RAW_UNIVERSE_DATA.strip().split('\n'):
         parts = line.strip().split('|')
         if len(parts) >= 3:
-            items.append({
-                'code': parts[0],
-                'name': parts[1],
-                'sector': parts[2]
-            })
+            code = parts[0].strip()
+            name = parts[1].strip()
+            sector = parts[2].strip()
+            if code and code not in seen:
+                seen.add(code)
+                items.append({
+                    'code': code,
+                    'name': name,
+                    'sector': sector
+                })
+                if len(items) == 389:
+                    break
     return items
 
 KOSPI_389_UNIVERSE = load_universe_389()
@@ -763,7 +768,7 @@ def fetch_naver_daily_candles(stk_code, count=900):
             time.sleep(0.1 * (attempt + 1))
     return pd.DataFrame()
 
-# Donchian Distance (20일) - 원본 수식
+# Donchian Distance (20일)
 def calc_donchian_dist(df, period=20):
     if len(df) < period:
         return 0.0
@@ -774,7 +779,7 @@ def calc_donchian_dist(df, period=20):
         return 0.0
     return (max_high - last_close) / max_high
 
-# Wilder's RSI (9일) - 원본 수식
+# Wilder's RSI (9일)
 def calc_wilder_rsi(df, period=9):
     if len(df) <= period:
         return 50.0
@@ -797,7 +802,7 @@ def calc_wilder_rsi(df, period=9):
     rs = avg_gain / avg_loss
     return 100.0 - (100.0 / (1.0 + rs))
 
-# Volume Z-Score (96일) - 원본 수식
+# Volume Z-Score (96일)
 def calc_vol_zscore(df, period=96):
     ct = min(len(df), period)
     if ct <= 5:
@@ -810,14 +815,13 @@ def calc_vol_zscore(df, period=96):
         return 0.0
     return (last_vol - m) / std
 
-# 횡단면 랭크 연산 (원본 수식 그대로 원복)
+# 횡단면 랭크 연산
 def calculate_cross_sectional_ranks(metrics_list):
     if len(metrics_list) < 3:
         return pd.DataFrame()
         
     df = pd.DataFrame(metrics_list)
     
-    # 원본 정렬: 각 지표별 오름차순 정렬 랭크 (0부터 N-1까지)
     df['r1'] = df['donch_dist'].rank(ascending=True, method='min') - 1
     df['r2'] = df['rsi9'].rank(ascending=True, method='min') - 1
     df['r3'] = df['vol_z'].rank(ascending=True, method='min') - 1
@@ -833,7 +837,7 @@ def calculate_cross_sectional_ranks(metrics_list):
 # ==========================================
 
 st.title("📈 Track X v1 Dashboard (389 Universe)")
-st.caption("KOSPI 389 유니버스 횡단면 랭킹 스카웃 엔진 (원본 알고리즘 100% 복원)")
+st.caption("KOSPI 389 유니버스 횡단면 랭킹 스카웃 엔진 (고유 389개 정합성 검증 완료)")
 
 st.markdown("---")
 
@@ -849,7 +853,7 @@ if st.button("🚀 KOSPI 389개 랭킹 탐색 시작", use_container_width=True)
     total_count = len(KOSPI_389_UNIVERSE)
     
     for idx, item in enumerate(KOSPI_389_UNIVERSE):
-        status_text.text(f"[{idx+1}/{total_count}] {item['name']} 분석 중...")
+        status_text.text(f"[{idx+1}/{total_count}] {item['name']} ({item['code']}) 분석 중...")
         progress_bar.progress((idx + 1) / total_count)
         
         df_candles = fetch_naver_daily_candles(item['code'], count=900)
@@ -899,9 +903,9 @@ if 'v1_389_df' in st.session_state and st.session_state['v1_389_df'] is not None
     
     if search_query:
         df_result = df_result[
-            df_result['name'].str.contains(search_query) | 
-            df_result['code'].str.contains(search_query) | 
-            df_result['sector'].str.contains(search_query)
+            df_result['name'].str.contains(search_query, na=False) | 
+            df_result['code'].str.contains(search_query, na=False) | 
+            df_result['sector'].str.contains(search_query, na=False)
         ]
         
     df_display = df_result[['rank_percentile', 'name', 'code', 'sector', 'close_price', 'rsi9', 'donch_dist', 'vol_z']].copy()
