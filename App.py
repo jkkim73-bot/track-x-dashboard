@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # ==========================================
-# 2. KOSPI 389 전체 유니버스 데이터 정의 (중복 제거된 정확한 389개)
+# 2. KOSPI 389 전체 유니버스 데이터 정의 (중복 제거된 고유 389개)
 # ==========================================
 RAW_UNIVERSE_DATA = """
 005930|삼성전자|정보기술
@@ -504,7 +504,7 @@ RAW_UNIVERSE_DATA = """
 009770|삼정펄프|코스피
 009810|CJ대한통운우|코스피
 009960|신세계건설|코스피
-010040|한국내화|코스피
+001004|한국내화|코스피
 010050|우리종금|코스피
 010100|한국프랜지|코스피
 010470|CJ우|코스피
@@ -737,7 +737,7 @@ def load_universe_389():
 KOSPI_389_UNIVERSE = load_universe_389()
 
 # ==========================================
-# 3. 원본 v1 지표 수식 및 횡단면 랭크
+# 3. 내부 랭킹 연산 로직 (화면 비노출)
 # ==========================================
 
 def fetch_naver_daily_candles(stk_code, count=900):
@@ -768,7 +768,6 @@ def fetch_naver_daily_candles(stk_code, count=900):
             time.sleep(0.1 * (attempt + 1))
     return pd.DataFrame()
 
-# Donchian Distance (20일)
 def calc_donchian_dist(df, period=20):
     if len(df) < period:
         return 0.0
@@ -779,7 +778,6 @@ def calc_donchian_dist(df, period=20):
         return 0.0
     return (max_high - last_close) / max_high
 
-# Wilder's RSI (9일)
 def calc_wilder_rsi(df, period=9):
     if len(df) <= period:
         return 50.0
@@ -802,7 +800,6 @@ def calc_wilder_rsi(df, period=9):
     rs = avg_gain / avg_loss
     return 100.0 - (100.0 / (1.0 + rs))
 
-# Volume Z-Score (96일)
 def calc_vol_zscore(df, period=96):
     ct = min(len(df), period)
     if ct <= 5:
@@ -815,7 +812,6 @@ def calc_vol_zscore(df, period=96):
         return 0.0
     return (last_vol - m) / std
 
-# 횡단면 랭크 연산
 def calculate_cross_sectional_ranks(metrics_list):
     if len(metrics_list) < 3:
         return pd.DataFrame()
@@ -830,14 +826,15 @@ def calculate_cross_sectional_ranks(metrics_list):
     df['rank_percentile'] = (df['r1'] + df['r2'] + df['r3']) / (3.0 * n_denom)
     
     df = df.sort_values('rank_percentile', ascending=False).reset_index(drop=True)
+    df['rank'] = range(1, len(df) + 1)
     return df
 
 # ==========================================
 # 4. Streamlit 웹 화면 UI
 # ==========================================
 
-st.title("📈 Track X v1 Dashboard (389 Universe)")
-st.caption("KOSPI 389 유니버스 횡단면 랭킹 스카웃 엔진 (고유 389개 정합성 검증 완료)")
+st.title("📈 Track X v1 Dashboard")
+st.caption("KOSPI 389 유니버스 통합 랭킹 스카웃 시스템")
 
 st.markdown("---")
 
@@ -853,7 +850,7 @@ if st.button("🚀 KOSPI 389개 랭킹 탐색 시작", use_container_width=True)
     total_count = len(KOSPI_389_UNIVERSE)
     
     for idx, item in enumerate(KOSPI_389_UNIVERSE):
-        status_text.text(f"[{idx+1}/{total_count}] {item['name']} ({item['code']}) 분석 중...")
+        status_text.text(f"[{idx+1}/{total_count}] {item['name']} ({item['code']}) 수집 중...")
         progress_bar.progress((idx + 1) / total_count)
         
         df_candles = fetch_naver_daily_candles(item['code'], count=900)
@@ -876,7 +873,7 @@ if st.button("🚀 KOSPI 389개 랭킹 탐색 시작", use_container_width=True)
             })
         time.sleep(0.35)
         
-    status_text.text("📊 최신 영업일 기준 동기화 및 횡단면 랭킹 연산 중...")
+    status_text.text("📊 최신 영업일 기준 동기화 및 횡단면 랭킹 산출 중...")
     
     date_counts = {}
     for c in raw_candidates:
@@ -892,12 +889,12 @@ if st.button("🚀 KOSPI 389개 랭킹 탐색 시작", use_container_width=True)
         st.session_state['v1_389_df'] = df_ranked
         st.session_state['target_date'] = target_date
         
-        status_text.success(f"✅ 총 {len(df_ranked)}개 종목 랭킹 분석 완료! (기준일자: {target_date})")
+        status_text.success(f"✅ 총 {len(df_ranked)}개 종목 분석 완료! (기준일자: {target_date})")
     else:
         status_text.error("❌ 시세 데이터를 수집하지 못했습니다.")
     progress_bar.empty()
 
-# 결과 렌더링
+# 결과 렌더링 (지표 컬럼 완전 제외, 순위/백분위/종목정보만 노출)
 if 'v1_389_df' in st.session_state and st.session_state['v1_389_df'] is not None:
     df_result = st.session_state['v1_389_df'].copy()
     
@@ -908,14 +905,11 @@ if 'v1_389_df' in st.session_state and st.session_state['v1_389_df'] is not None
             df_result['sector'].str.contains(search_query, na=False)
         ]
         
-    df_display = df_result[['rank_percentile', 'name', 'code', 'sector', 'close_price', 'rsi9', 'donch_dist', 'vol_z']].copy()
-    df_display.columns = ['Rank Percentile', '종목명', '종목코드', '섹터', '현재가(원)', 'RSI(9)', 'Donch Dist', 'Vol-Z(96)']
+    df_display = df_result[['rank', 'rank_percentile', 'name', 'code', 'sector', 'close_price']].copy()
+    df_display.columns = ['순위', 'Rank Score', '종목명', '종목코드', '섹터', '현재가(원)']
     
-    df_display['Rank Percentile'] = df_display['Rank Percentile'].apply(lambda x: f"{x:.4f}")
+    df_display['Rank Score'] = df_display['Rank Score'].apply(lambda x: f"{x:.4f}")
     df_display['현재가(원)'] = df_display['현재가(원)'].apply(lambda x: f"{x:,}")
-    df_display['RSI(9)'] = df_display['RSI(9)'].apply(lambda x: f"{x:.1f}")
-    df_display['Donch Dist'] = df_display['Donch Dist'].apply(lambda x: f"{x:.2f}")
-    df_display['Vol-Z(96)'] = df_display['Vol-Z(96)'].apply(lambda x: f"{x:.2f}")
     
     st.dataframe(
         df_display,
